@@ -1,0 +1,73 @@
+# Lybica scanner registry — THE PLUGIN CONTRACT.
+# Add a scanner = add an entry here. No code change (ADR-11: open to more).
+#
+# Fields per scanner:
+#   name      : unique id (also the default --scanners subset key)
+#   stage     : GitHub-grouped label shown in logs ("Lybica / <X>")
+#   kind      : code (scans {target} path) | dast (scans {dast-target} URL)
+#   enabled   : default on/off (callers can subset via the `scanners` input)
+#   install   : shell to install the tool (idempotent; runs on the runner)
+#   run       : shell to run it; {target} and {report} are substituted
+#   report    : output file the run writes
+#   scan_type : DefectDojo parser name (must match a real parser)
+#   vuln      : Jira vuln: label applied to each finding
+scanners:
+  - name: sast
+    stage: "Lybica / SAST"
+    kind: code
+    enabled: true
+    install: "pip install semgrep"
+    run: "semgrep scan --config auto --json --output {report} {target} || true"
+    report: semgrep.json
+    scan_type: "Semgrep JSON Report"
+    vuln: sast
+
+  - name: secrets
+    stage: "Lybica / Secrets"
+    kind: code
+    enabled: true
+    install: "curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin"
+    run: "trufflehog filesystem {target} --json --no-update > {report} 2>/dev/null || true"
+    report: trufflehog.json
+    scan_type: "Trufflehog Scan"
+    vuln: secret
+
+  - name: sbom
+    stage: "Lybica / SBOM"
+    kind: code
+    enabled: true
+    install: "curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin"
+    run: "syft {target} -o cyclonedx-json={report} || true"
+    report: sbom.cdx.json
+    scan_type: "CycloneDX Scan"
+    vuln: sbom
+
+  - name: sca
+    stage: "Lybica / SCA"
+    kind: code
+    enabled: true
+    install: "curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin"
+    run: "grype dir:{target} -o json --file {report} || true"
+    report: grype.json
+    scan_type: "Anchore Grype"
+    vuln: dependency
+
+  - name: iac
+    stage: "Lybica / IaC"
+    kind: code
+    enabled: true
+    install: "pip install checkov"
+    run: "checkov -d {target} --framework terraform --output json --soft-fail --download-external-modules true > {report} || true"
+    report: checkov.json
+    scan_type: "Checkov Scan"
+    vuln: iac
+
+  - name: dast
+    stage: "Lybica / DAST"
+    kind: dast            # uses {target} = the dast-target URL; skipped if none given
+    enabled: true
+    install: "true"       # ZAP runs via docker, no install step
+    run: "docker run --rm -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t {target} -J {report} || true"
+    report: zap.json
+    scan_type: "ZAP Scan"
+    vuln: dast

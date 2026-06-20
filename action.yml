@@ -1,0 +1,67 @@
+name: "Lybica Security Scan"
+description: >-
+  Run Lybica's pluggable OSS security scanners (SAST/Secrets/SBOM/SCA/IaC/DAST)
+  as Lybica-labelled stages and ship findings to DefectDojo -> SVM. Scanners are
+  defined in scanners.yaml (the plugin contract) — add one by editing the
+  registry, no code change. Findings POST to the public DefectDojo (DEFECTDOJO_URL,
+  e.g. https://app.lybica.com) over the internet — no Tailscale required.
+
+inputs:
+  product:
+    description: "DefectDojo product name (e.g. 'Cenefits Staging')."
+    required: true
+  engagement:
+    description: "DefectDojo engagement (auto-created)."
+    required: true
+  target:
+    description: "Path to scan for code scanners."
+    required: false
+    default: "."
+  dast-target:
+    description: "URL to scan for DAST (empty = skip DAST)."
+    required: false
+    default: ""
+  component:
+    description: "component: label applied to findings."
+    required: false
+    default: "app"
+  scanners:
+    description: "Optional CSV subset of scanner names (default: all enabled)."
+    required: false
+    default: ""
+  branch:
+    description: "Source branch; tagged on import."
+    required: false
+    default: ""
+  commit:
+    description: "Commit SHA; tagged on import."
+    required: false
+    default: ""
+  python-version:
+    required: false
+    default: "3.11"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install entrypoint deps
+      shell: bash
+      run: python -m pip install --upgrade pip requests pyyaml
+
+    - name: Run Lybica scanners -> DefectDojo
+      shell: bash
+      env:
+        LYBICA_TARGET: ${{ inputs.target }}
+        LYBICA_DAST_TARGET: ${{ inputs.dast-target }}
+        LYBICA_PRODUCT: ${{ inputs.product }}
+        LYBICA_ENGAGEMENT: ${{ inputs.engagement }}
+        LYBICA_BRANCH: ${{ inputs.branch }}
+        LYBICA_COMMIT: ${{ inputs.commit }}
+        LYBICA_COMPONENT: ${{ inputs.component }}
+        LYBICA_SCANNERS: ${{ inputs.scanners }}
+      run: python "${{ github.action_path }}/run.py"
