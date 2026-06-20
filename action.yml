@@ -42,26 +42,17 @@ inputs:
     default: "3.11"
 
 runs:
-  using: "composite"
-  steps:
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python-version }}
-
-    - name: Install entrypoint deps
-      shell: bash
-      run: python -m pip install --upgrade pip requests pyyaml
-
-    - name: Run Lybica scanners -> DefectDojo
-      shell: bash
-      env:
-        LYBICA_TARGET: ${{ inputs.target }}
-        LYBICA_DAST_TARGET: ${{ inputs.dast-target }}
-        LYBICA_PRODUCT: ${{ inputs.product }}
-        LYBICA_ENGAGEMENT: ${{ inputs.engagement }}
-        LYBICA_BRANCH: ${{ inputs.branch }}
-        LYBICA_COMMIT: ${{ inputs.commit }}
-        LYBICA_COMPONENT: ${{ inputs.component }}
-        LYBICA_SCANNERS: ${{ inputs.scanners }}
-      run: python "${{ github.action_path }}/run.py"
+  # Docker action: scanners are pre-baked (no per-run install). DefectDojo/Jira
+  # creds come from the caller job's env (DEFECTDOJO_URL/_API_TOKEN, JIRA_*),
+  # which the runner passes into the container.
+  using: "docker"
+  image: "docker://us-docker.pkg.dev/teomach-utils/lybica/lybica-scanner:v2"
+  env:
+    LYBICA_TARGET: ${{ inputs.target }}
+    LYBICA_DAST_TARGET: ${{ inputs.dast-target }}
+    LYBICA_PRODUCT: ${{ inputs.product }}
+    LYBICA_ENGAGEMENT: ${{ inputs.engagement }}
+    LYBICA_BRANCH: ${{ inputs.branch }}
+    LYBICA_COMMIT: ${{ inputs.commit }}
+    LYBICA_COMPONENT: ${{ inputs.component }}
+    LYBICA_SCANNERS: ${{ inputs.scanners }}
