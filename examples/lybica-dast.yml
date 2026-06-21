@@ -1,0 +1,9 @@
+# Copy to .github/workflows/lybica-dast.yml. Edit the cron to your cadence.
+name: Lybica DAST
+on:
+  schedule: [{ cron: "0 2 * * 1" }]   # weekly Mon 02:00 UTC
+  workflow_dispatch: {}
+jobs:
+  dast:
+    uses: teomach/lybica-action/.github/workflows/dast.yml@v2
+    secrets: inherit

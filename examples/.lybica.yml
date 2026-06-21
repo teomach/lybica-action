@@ -1,0 +1,21 @@
+# .lybica.yml — Lybica Security config (commit at your repo root).
+# Read at runtime by teomach/lybica-action; repo/org Actions *vars* override it.
+
+# Single project (default): scan the whole repo with the default scanners.
+monorepo: false
+scanners: [sast, secrets, sbom, sca]      # override per-org with var LYBICA_SCANNERS
+
+# Monorepo: scan only the service whose files changed.
+# monorepo: true
+# services:
+#   - { name: backend, path: backend,        scanners: [sast, secrets, sca] }
+#   - { name: web,     path: frontend,       scanners: [sast, secrets] }
+#   - { name: infra,   path: infrastructure, scanners: [iac] }
+
+# DAST (runs from lybica-dast.yml on its cron; target is configurable here or via
+# the var LYBICA_DAST_TARGET). schedule is informational — the cron lives in the
+# caller workflow because GitHub triggers are static.
+dast:
+  enabled: false
+  target: ""                              # e.g. https://staging.example.com
+  schedule: "0 2 * * 1"                   # weekly Mon 02:00 UTC

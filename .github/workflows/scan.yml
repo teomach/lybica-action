@@ -1,0 +1,111 @@
+name: Lybica Scan
+# Reusable workflow: resolves .lybica.yml (+ repo/org var overrides) into a service
+# matrix, then runs the Lybica Docker scanner per service -> public DefectDojo.
+# Caller (in the customer repo):
+#   jobs:
+#     lybica:
+#       uses: teomach/lybica-action/.github/workflows/scan.yml@v2
+#       secrets: inherit
+on:
+  workflow_call:
+    inputs:
+      product:
+        type: string
+        required: false
+        default: ""
+        description: "DefectDojo product (default: the repo name)."
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Resolve config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.cfg.outputs.matrix }}
+      any: ${{ steps.cfg.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve .lybica.yml -> service matrix
+        id: cfg
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          LYBICA_SCANNERS: ${{ vars.LYBICA_SCANNERS }}
+          LYBICA_MONOREPO: ${{ vars.LYBICA_MONOREPO }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, subprocess, sys
+          try:
+              import yaml
+          except ImportError:
+              subprocess.run([sys.executable,"-m","pip","install","-q","pyyaml"]); import yaml
+          cfg = {}
+          for f in (".lybica.yml", ".lybica.yaml"):
+              if os.path.exists(f):
+                  cfg = yaml.safe_load(open(f)) or {}; break
+          defaults = cfg.get("scanners") or ["sast","secrets","sbom","sca"]
+          if os.environ.get("LYBICA_SCANNERS"):
+              defaults = [s.strip() for s in os.environ["LYBICA_SCANNERS"].split(",") if s.strip()]
+          mono = bool(cfg.get("monorepo", False))
+          if os.environ.get("LYBICA_MONOREPO"):
+              mono = os.environ["LYBICA_MONOREPO"].lower() in ("1","true","yes")
+          services = cfg.get("services") or []
+          event = os.environ.get("EVENT","")
+          base = (os.environ.get("BASE") or "").strip()
+          def changed():
+              if not base or base.strip("0") == "":
+                  return None
+              r = subprocess.run(["git","diff","--name-only",base,"HEAD"],capture_output=True,text=True)
+              return r.stdout.split() if r.returncode == 0 else None
+          if not mono or not services:
+              include = [{"service":"repo","path":".","scanners":",".join(defaults)}]
+          else:
+              cf = changed()
+              rescan_all = event == "workflow_dispatch" or cf is None or ".lybica.yml" in (cf or [])
+              if rescan_all:
+                  sel = services
+              else:
+                  def touched(p):
+                      p = p.rstrip("/"); return any(c == p or c.startswith(p + "/") for c in cf)
+                  sel = [s for s in services if touched(s.get("path","."))]
+              include = [{"service": s["name"], "path": s.get("path","."),
+                         "scanners": ",".join(s.get("scanners", defaults))} for s in sel]
+          print("matrix=" + json.dumps({"include": include}))
+          print("any=" + ("true" if include else "false"))
+          PY
+
+  scan:
+    name: Scan ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    env:
+      DEFECTDOJO_URL: ${{ vars.DEFECTDOJO_URL || 'https://app.lybica.com' }}
+      DEFECTDOJO_API_TOKEN: ${{ secrets.DEFECTDOJO_API_TOKEN }}
+      LYBICA_SCAN_TIMEOUT: ${{ vars.LYBICA_SCAN_TIMEOUT || '600' }}
+      JIRA_URL: ${{ vars.JIRA_URL }}
+      JIRA_USER: ${{ secrets.JIRA_USER }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: teomach/lybica-action@v2
+        with:
+          product: ${{ inputs.product != '' && inputs.product || github.event.repository.name }}
+          engagement: CI Scans - ${{ matrix.service }}
+          component: ${{ matrix.service }}
+          target: ${{ matrix.path }}
+          scanners: ${{ matrix.scanners }}
+          branch: ${{ github.ref_name }}
+          commit: ${{ github.sha }}

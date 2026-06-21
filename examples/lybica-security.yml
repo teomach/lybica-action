@@ -1,0 +1,10 @@
+# Copy to .github/workflows/lybica-security.yml in your repo.
+name: Lybica Security
+on:
+  push: { branches: [main, master, develop] }
+  pull_request:
+  workflow_dispatch: {}
+jobs:
+  lybica:
+    uses: teomach/lybica-action/.github/workflows/scan.yml@v2
+    secrets: inherit
