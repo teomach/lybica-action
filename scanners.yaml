@@ -5,7 +5,7 @@ scanners:
   stage: Lybica / SAST
   kind: code
   enabled: true
-  run: semgrep scan --config p/default --json --output {report} {target} || true
+  run: semgrep scan --config p/default --metrics=off --disable-version-check --exclude node_modules --exclude vendor --exclude migrations --exclude dist --exclude build --exclude static --exclude '*.min.js' --json --output {report} {target} || true
   report: semgrep.json
   scan_type: Semgrep JSON Report
   vuln: sast
