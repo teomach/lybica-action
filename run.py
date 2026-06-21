@@ -25,8 +25,14 @@ import subprocess
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _sh(cmd: str) -> int:
-    return subprocess.run(cmd, shell=True).returncode
+def _sh(cmd: str, timeout: int = None) -> int:
+    """Run a shell command. With a timeout, kill it and return 124 (don't hang the
+    whole CI / burn minutes on a stuck scanner)."""
+    try:
+        return subprocess.run(cmd, shell=True, timeout=timeout).returncode
+    except subprocess.TimeoutExpired:
+        print(f"[lybica] command exceeded {timeout}s and was killed: {cmd[:90]}")
+        return 124
 
 
 def _nonempty(path: str) -> bool:
@@ -70,7 +76,9 @@ def main() -> int:
             if install:
                 _sh(install)
             run = sc["run"].format(target=shlex.quote(tgt), report=shlex.quote(report))
-            _sh(run)
+            # per-scanner wall-clock cap (env LYBICA_SCAN_TIMEOUT, default 600s) so a
+            # stuck scanner can't run forever and exhaust Actions minutes.
+            _sh(run, timeout=int(os.environ.get("LYBICA_SCAN_TIMEOUT", "600")))
         except Exception as exc:  # a broken plugin must never fail the build
             print(f"[lybica] scanner {name} error: {exc}")
         finally:
